@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project name="wp-block-forker" default="dist">
 
-	<target name="prepare">
+	<target name="prepare" description="Clean build-dist so every build starts from unstamped source">
+		<delete dir="./build-dist" quiet="true" />
 		<mkdir dir="./build-dist/wp-block-forker" />
 	</target>
 
