@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+  release:
+    types: [ published ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Build editor assets
+        run: npm run build
+
+      - name: Stamp version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i "s|{{VERSION}}|${VERSION}|g" wp-block-forker.php
+          grep -Fq "Version:           ${VERSION}" wp-block-forker.php || exit 1
+
+      - name: Package
+        run: |
+          mkdir -p /tmp/build/wp-block-forker
+          rsync -av . /tmp/build/wp-block-forker/ --exclude-from='.distignore'
+          cd /tmp/build && zip -r wp-block-forker.zip wp-block-forker
+          mv wp-block-forker.zip "$GITHUB_WORKSPACE/"
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: wp-block-forker.zip

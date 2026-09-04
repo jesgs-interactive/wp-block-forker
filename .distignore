@@ -1,0 +1,13 @@
+/.git/
+/.github/
+/node_modules/
+/src/
+/bin/
+/build.xml
+.gitignore
+.editorconfig
+AGENTS.md
+README.md
+package.json
+package-lock.json
+/.distignore

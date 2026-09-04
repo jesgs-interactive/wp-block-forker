@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="wp-block-forker" default="dist">
+
+	<target name="prepare">
+		<mkdir dir="./build-dist/wp-block-forker" />
+	</target>
+
+	<target name="js" description="Compile editor JS via wp-scripts">
+		<exec executable="npm" dir="." passthru="yes" checkreturn="true">
+			<arg value="ci" />
+		</exec>
+		<exec executable="npm" dir="." passthru="yes" checkreturn="true">
+			<arg line="run build" />
+		</exec>
+	</target>
+
+	<target name="build" depends="prepare,js">
+		<copy todir="./build-dist/wp-block-forker" includeemptydirs="true">
+			<fileset dir="." defaultexcludes="true">
+				<exclude name="build-dist/**" />
+				<exclude name="node_modules/**" />
+				<exclude name="src/**" />
+				<exclude name="bin/**" />
+				<exclude name=".git/**" />
+				<exclude name=".github/**" />
+				<exclude name="build.xml" />
+				<exclude name="package.json" />
+				<exclude name="package-lock.json" />
+				<exclude name=".distignore" />
+				<exclude name=".gitignore" />
+				<exclude name=".editorconfig" />
+				<exclude name="AGENTS.md" />
+				<exclude name="README.md" />
+			</fileset>
+		</copy>
+		<exec executable="../../bin/build.sh" dir="build-dist/wp-block-forker" passthru="yes" checkreturn="true" />
+	</target>
+
+	<target name="dist" depends="build">
+		<exec executable="php" dir="." passthru="yes" checkreturn="true">
+			<arg value="bin/package.php" />
+			<arg value="build-dist/wp-block-forker" />
+			<arg value="build-dist/wp-block-forker.zip" />
+			<arg value=".distignore" />
+		</exec>
+	</target>
+
+</project>

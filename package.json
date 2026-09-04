@@ -1,0 +1,13 @@
+{
+  "name": "wp-block-forker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fork selected blocks in the editor into a new post.",
+  "scripts": {
+    "start": "wp-scripts start",
+    "build": "wp-scripts build"
+  },
+  "devDependencies": {
+    "@wordpress/scripts": "^30.0.0"
+  }
+}
