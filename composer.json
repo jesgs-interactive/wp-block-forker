@@ -1,0 +1,15 @@
+{
+    "name": "jesgs-interactive/wp-block-forker",
+    "description": "Select blocks in the editor and fork them into a new post, as a copy or a move.",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": ">=8.1"
+    },
+    "require-dev": {
+        "phing/phing": "^3.0"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

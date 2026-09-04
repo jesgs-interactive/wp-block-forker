@@ -9,6 +9,9 @@ as a copy or a move.
 - PHP 8.1+
 - Node 20+ (only for building from source — not required to run an
   already-built release zip)
+- Composer (only for building a local distribution zip — see below; not
+  required to build from source for local dev, and not required to run an
+  already-built release zip)
 
 ## Install
 
@@ -27,6 +30,17 @@ npm run build
 This compiles `src/` into `build/`, which the PHP side requires at runtime.
 `build/` is gitignored — always run the build before activating a plugin
 checked out from source.
+
+To build a distributable zip locally (what a GitHub release would produce,
+without tagging one):
+
+```
+composer install
+vendor/bin/phing dist
+```
+
+Produces `build-dist/wp-block-forker.zip`. See `AGENTS.md` for what it
+excludes and how it relates to the release workflow.
 
 ## Usage
 

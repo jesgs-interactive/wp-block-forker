@@ -1,6 +1,7 @@
 /.git/
 /.github/
 /node_modules/
+/vendor/
 /src/
 /bin/
 /build.xml
@@ -10,4 +11,6 @@ AGENTS.md
 README.md
 package.json
 package-lock.json
+composer.json
+composer.lock
 /.distignore

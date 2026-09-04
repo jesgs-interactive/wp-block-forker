@@ -19,6 +19,7 @@
 			<fileset dir="." defaultexcludes="true">
 				<exclude name="build-dist/**" />
 				<exclude name="node_modules/**" />
+				<exclude name="vendor/**" />
 				<exclude name="src/**" />
 				<exclude name="bin/**" />
 				<exclude name=".git/**" />
@@ -26,6 +27,8 @@
 				<exclude name="build.xml" />
 				<exclude name="package.json" />
 				<exclude name="package-lock.json" />
+				<exclude name="composer.json" />
+				<exclude name="composer.lock" />
 				<exclude name=".distignore" />
 				<exclude name=".gitignore" />
 				<exclude name=".editorconfig" />
