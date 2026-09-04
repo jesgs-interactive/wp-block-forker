@@ -28,7 +28,13 @@ class Rest_Controller {
 					'source_post_id'    => array(
 						'required'          => true,
 						'type'              => 'integer',
-						'validate_callback' => 'is_numeric',
+						// Bare 'is_numeric' breaks here: has_valid_params() calls
+						// validate_callback with 3 args ($value, $request, $param),
+						// and PHP 8's strict arity check throws ArgumentCountError
+						// on internal functions given more args than they declare.
+						'validate_callback' => static function ( $value ) {
+							return is_numeric( $value );
+						},
 						'sanitize_callback' => 'absint',
 					),
 					'post_type'         => array(
