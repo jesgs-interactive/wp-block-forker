@@ -1,7 +1,7 @@
 # WP Block Forker
 
 Select blocks in the WordPress block editor and fork them into a new post —
-as a copy or a move. Also available headless via WP-CLI.
+as a copy or a move.
 
 ## Requirements
 
@@ -30,18 +30,9 @@ checked out from source.
 
 ## Usage
 
-**Editor:** select one or more blocks → block toolbar "⋮" menu → "Fork to
-new post…" → set a title, pick a post type if more than one is available,
-choose copy or move → Fork.
-
-**WP-CLI:**
-
-```
-wp block-fork <source_post_id> --blocks=<comma-separated indices> [--mode=copy|move] [--post-type=post] [--title="..."] [--yes]
-```
-
-`--blocks` indices are zero-based positions in the post's top-level blocks,
-in `parse_blocks()` order. `--mode=move` requires `--yes`.
+Select one or more blocks → block toolbar "⋮" menu → "Fork to new post…" →
+set a title, pick a post type if more than one is available, choose copy or
+move → Fork.
 
 See `AGENTS.md` for architecture, the REST API contract, and design
 decisions worth knowing before changing anything.

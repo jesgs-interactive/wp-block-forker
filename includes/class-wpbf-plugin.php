@@ -20,13 +20,6 @@ class Plugin {
 	public function init(): void {
 		add_action( 'rest_api_init', array( $this->rest_controller, 'register_routes' ) );
 		add_action( 'enqueue_block_editor_assets', array( $this, 'enqueue_editor_assets' ) );
-
-		// Direct registration rather than hooking cli_init: WP_CLI is
-		// already fully loaded by the time plugins_loaded fires under
-		// WP-CLI, and this is the pattern WP-CLI's own handbook uses.
-		if ( defined( 'WP_CLI' ) && WP_CLI ) {
-			\WP_CLI::add_command( 'block-fork', new CLI_Command( $this->fork_service ) );
-		}
 	}
 
 	public function enqueue_editor_assets(): void {

@@ -15,16 +15,13 @@ and a mode:
   untouched.
 - **Move** — same, but also removes the selected blocks from the source post.
 
-Same operation is available headless via `wp block-fork`.
-
 ## Architecture
 
 ```
 wp-block-forker.php              bootstrap: header, constants, manual requires
 includes/
-  class-wpbf-fork-service.php    create_fork(), update_source_content(), derive_title()
+  class-wpbf-fork-service.php    create_fork()
   class-wpbf-rest-controller.php POST wpbf/v1/fork — used by the editor
-  class-wpbf-cli-command.php     wp block-fork — used headless
   class-wpbf-plugin.php          hook wiring, asset enqueue, forkable-post-types list
   class-wpbf-update-checker.php  embedded GitHub Releases updater (per house convention)
 src/
@@ -42,74 +39,48 @@ per-project call, not a change to the scaffold skill's default — see the
 Sept 2026 conversation about reconciling `src/` vs `includes/` across the
 toolchain generally, which is still open as its own topic.
 
-## The REST/CLI split, and why "move" behaves differently in each
+## Why "move" is handled client-side, not by the REST endpoint
 
 `Fork_Service::create_fork()` only ever *creates*. It never touches the
-source post. That's deliberate:
+source post — "move" is handled entirely client-side instead:
+`fork-modal.js` calls `dispatch('core/block-editor').removeBlocks(clientIds)`
+after a successful fork. This does **not** immediately persist — it just
+updates the editor's local state, and the removal is saved the normal way,
+next time the user (or autosave) saves the post. A snackbar tells them
+that explicitly. The alternative — the REST endpoint overwriting the
+source post's `post_content` directly, in the same request — was
+considered and rejected: if the editor has any other unsaved local edits
+at fork time, a same-request server-side overwrite of `post_content` races
+against whatever the editor itself saves next, and one of the two silently
+loses. Going through the editor's own save path avoids that entirely.
 
-- **From the editor**, "move" is handled entirely client-side:
-  `fork-modal.js` calls `dispatch('core/block-editor').removeBlocks(clientIds)`
-  after a successful fork. This does **not** immediately persist — it just
-  updates the editor's local state, and the removal is saved the normal way,
-  next time the user (or autosave) saves the post. A snackbar tells them
-  that explicitly. The alternative — the REST endpoint overwriting the
-  source post's `post_content` directly, in the same request — was
-  considered and rejected: if the editor has any other unsaved local edits
-  at fork time, a same-request server-side overwrite of `post_content` races
-  against whatever the editor itself saves next, and one of the two silently
-  loses. Going through the editor's own save path avoids that entirely.
-
-- **From WP-CLI**, there's no open editor session to route through, so
-  `CLI_Command` computes the remaining blocks itself (`parse_blocks()` minus
-  the given indices) and calls `Fork_Service::update_source_content()`
-  directly. This is the one place `update_source_content()` is called at
-  all — REST never calls it.
-
-If a REST-based "move" (no open editor) is ever needed — some future
-automation, not the editor UI — `update_source_content()` already exists to
-support it; it would need a new REST arg (`remaining_content`) and a
-permission check requiring `edit_post` capability with `context: edit`,
-same shape as the CLI capability story below.
+If a REST-based "move" is ever needed for some future automation (not the
+editor UI), it would need a `Fork_Service` method to overwrite
+`post_content` with the remaining blocks, a new REST arg
+(`remaining_content`), and a permission check requiring `edit_post`
+capability with `context: edit`.
 
 ## Idempotency
 
-Every fork request (REST or CLI) carries a `fork_token`. `create_fork()`
-checks for an existing post with that token in `_wpbf_fork_token` postmeta
-before creating anything, and returns the existing post ID if found. This
-covers a retried REST call after a dropped response (client sees a network
-error, retries, but the server had already succeeded) — the standard reason
-this toolchain treats creation actions as idempotent.
+Every fork request carries a `fork_token`. `create_fork()` checks for an
+existing post with that token in `_wpbf_fork_token` postmeta before creating
+anything, and returns the existing post ID if found. This covers a retried
+REST call after a dropped response (client sees a network error, retries,
+but the server had already succeeded) — the standard reason this toolchain
+treats creation actions as idempotent.
 
 Provenance postmeta on every forked post: `_wpbf_source_post_id`,
 `_wpbf_fork_mode`, `_wpbf_fork_token`.
 
 ## Capability model
 
-- **REST**: `current_user_can( 'edit_post', $source_post_id )` (object-specific,
-  so an author can't fork out of someone else's post) AND
-  `current_user_can( $target_post_type->cap->create_posts )`. Nonce is
-  handled automatically by `@wordpress/api-fetch`'s default middleware —
-  no manual nonce plumbing needed since the editor already wires this up.
-- **CLI**: capability checks are **not** enforced. Shell/WP-CLI access to
-  the server is treated as already-trusted, matching how the other
-  recovery/prune scripts in this toolchain work (dry-run + `--yes` instead
-  of a capability gate). `--mode=move` requires `--yes` since it mutates the
-  source post; `--mode=copy` doesn't, since it's non-destructive.
+`current_user_can( 'edit_post', $source_post_id )` (object-specific, so an
+author can't fork out of someone else's post) AND
+`current_user_can( $target_post_type->cap->create_posts )`. Nonce is
+handled automatically by `@wordpress/api-fetch`'s default middleware — no
+manual nonce plumbing needed since the editor already wires this up.
 
-## WP-CLI block selection
-
-Editor block *selection* has no server-side representation — there's no
-block ID persisted in `post_content` by default. The CLI analog is
-zero-based indices into `parse_blocks()`'s top-level array:
-
-```
-wp block-fork 123 --blocks=2,3,7
-wp block-fork 123 --blocks=0,1 --mode=move --post-type=page --yes
-```
-
-Nested/inner blocks aren't individually addressable this way — only
-top-level blocks. Same limitation exists in the editor UI: multi-selecting
-across different nesting levels isn't handled specially, since
+Multi-selecting across different nesting levels isn't handled specially —
 `getBlocksByClientId()` + `serialize()` just takes whatever's selected at
 face value. Fine for the common case (selecting sibling blocks); an edge
 case worth knowing about if someone reports a fork producing unexpected
@@ -141,6 +112,14 @@ installs on. First thing to check if the menu item doesn't appear, or
 - No REST support for creating a fork of a fork's *ancestor chain* — a
   forked post doesn't currently expose its `_wpbf_source_post_id` in the UI
   anywhere. Would need an admin column or a REST field if that's ever wanted.
+- No WP-CLI command (`wp block-fork`, `CLI_Command`, `Fork_Service::update_source_content()`,
+  `Fork_Service::derive_title()` were removed 2026-09-04). This plugin is
+  editor-only by design: the CLI path duplicated block-selection logic
+  (index-based instead of clientId-based), and deliberately ran with no
+  capability checks (shell access treated as trusted) — real attack surface
+  and maintenance cost for a headless use case nobody had asked for. If a
+  real automation need for headless forking shows up later, re-add it as its
+  own scoped feature rather than resurrecting this version wholesale.
 
 ## Release process
 

@@ -1,7 +1,6 @@
 <?php
 /**
- * Core fork logic. Shared by the REST controller and the WP-CLI command so
- * the two entry points can never drift in behavior.
+ * Core fork logic, used by the REST controller.
  */
 
 namespace WPBF;
@@ -97,57 +96,6 @@ class Fork_Service {
 		update_post_meta( $new_post_id, '_wpbf_fork_token', $fork_token );
 
 		return $new_post_id;
-	}
-
-	/**
-	 * Overwrite a source post's content with what remains after extraction.
-	 *
-	 * Only used by the WP-CLI path. The editor path handles "move" entirely
-	 * client-side (removeBlocks + the editor's own save) — see AGENTS.md for why.
-	 *
-	 * @return true|\WP_Error
-	 */
-	public function update_source_content( int $source_post_id, string $remaining_content ) {
-		if ( ! get_post( $source_post_id ) ) {
-			return new \WP_Error(
-				'wpbf_invalid_source',
-				__( 'The source post could not be found.', 'wp-block-forker' ),
-				array( 'status' => 404 )
-			);
-		}
-
-		$updated = wp_update_post(
-			array(
-				'ID'           => $source_post_id,
-				'post_content' => $remaining_content,
-			),
-			true
-		);
-
-		if ( is_wp_error( $updated ) ) {
-			return $updated;
-		}
-
-		return true;
-	}
-
-	/**
-	 * Derive a title from the first parsed block that has visible text.
-	 * Used only as the WP-CLI default; the editor UI derives its own
-	 * title client-side and always sends one explicitly.
-	 *
-	 * @param array $blocks Parsed blocks (parse_blocks() shape).
-	 */
-	public function derive_title( array $blocks ): string {
-		foreach ( $blocks as $block ) {
-			$text = wp_strip_all_tags( (string) ( $block['innerHTML'] ?? '' ) );
-			$text = trim( $text );
-			if ( '' !== $text ) {
-				return wp_trim_words( $text, 12, '…' );
-			}
-		}
-
-		return __( 'Untitled fragment', 'wp-block-forker' );
 	}
 
 	protected function find_existing_fork( string $fork_token ): ?int {
