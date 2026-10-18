@@ -48,5 +48,10 @@ Select one or more blocks → block toolbar "⋮" menu → "Fork to new post…"
 set a title, pick a post type if more than one is available, choose copy or
 move → Fork.
 
+To fold blocks into a post that already exists instead, use "Merge into
+existing post…" from the same menu: search for the target (drafts and
+published posts you can edit), choose whether the blocks go at the start or
+end, choose copy or move → Merge.
+
 See `AGENTS.md` for architecture, the REST API contract, and design
 decisions worth knowing before changing anything.

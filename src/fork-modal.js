@@ -1,8 +1,7 @@
 import { useState } from '@wordpress/element';
-import { useSelect, dispatch } from '@wordpress/data';
+import { useSelect } from '@wordpress/data';
 import { store as blockEditorStore } from '@wordpress/block-editor';
 import { store as editorStore } from '@wordpress/editor';
-import { store as noticesStore } from '@wordpress/notices';
 import { serialize } from '@wordpress/blocks';
 import {
 	Modal,
@@ -14,6 +13,8 @@ import {
 } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
 import apiFetch from '@wordpress/api-fetch';
+
+import { generateToken, postTypes, modeOptions, finishOperation } from './shared';
 
 function stripTags( html ) {
 	const el = document.createElement( 'div' );
@@ -30,18 +31,6 @@ function deriveTitle( blocks ) {
 	}
 	return __( 'Untitled fragment', 'wp-block-forker' );
 }
-
-function generateForkToken() {
-	if ( window.crypto && typeof window.crypto.randomUUID === 'function' ) {
-		return window.crypto.randomUUID();
-	}
-	return 'fork-' + Date.now() + '-' + Math.random().toString( 36 ).slice( 2 );
-}
-
-const postTypes =
-	( window.wpbfConfig && window.wpbfConfig.postTypes ) || [
-		{ slug: 'post', label: __( 'Post', 'wp-block-forker' ) },
-	];
 
 export default function ForkModal( { clientIds, onClose } ) {
 	const { selectedBlocks, sourcePostId } = useSelect(
@@ -76,35 +65,21 @@ export default function ForkModal( { clientIds, onClose } ) {
 					title,
 					extracted_content: extractedContent,
 					mode,
-					fork_token: generateForkToken(),
+					fork_token: generateToken(),
 				},
 			} );
 
-			if ( 'move' === mode ) {
-				// Removes locally only. Persisting this to the source post
-				// happens via the editor's own save — see AGENTS.md.
-				dispatch( blockEditorStore ).removeBlocks( clientIds, false );
-			}
-
-			dispatch( noticesStore ).createSuccessNotice(
-				'move' === mode
-					? __(
-							'Forked. The blocks were removed here — save this post to keep that change.',
-							'wp-block-forker'
-					  )
-					: __( 'Forked to a new draft.', 'wp-block-forker' ),
-				{
-					type: 'snackbar',
-					actions: response?.edit_url
-						? [
-								{
-									label: __( 'Edit new post', 'wp-block-forker' ),
-									url: response.edit_url,
-								},
-						  ]
-						: [],
-				}
-			);
+			finishOperation( {
+				mode,
+				clientIds,
+				copyMessage: __( 'Forked to a new draft.', 'wp-block-forker' ),
+				moveMessage: __(
+					'Forked. The blocks were removed here — save this post to keep that change.',
+					'wp-block-forker'
+				),
+				editUrl: response?.edit_url,
+				editLabel: __( 'Edit new post', 'wp-block-forker' ),
+			} );
 
 			onClose();
 		} catch ( err ) {
@@ -145,16 +120,7 @@ export default function ForkModal( { clientIds, onClose } ) {
 			<RadioControl
 				label={ __( 'Mode', 'wp-block-forker' ) }
 				selected={ mode }
-				options={ [
-					{
-						label: __( 'Copy — leave the blocks here too', 'wp-block-forker' ),
-						value: 'copy',
-					},
-					{
-						label: __( 'Move — remove the blocks from this post', 'wp-block-forker' ),
-						value: 'move',
-					},
-				] }
+				options={ modeOptions }
 				onChange={ setMode }
 			/>
 
