@@ -35,7 +35,10 @@ class Update_Checker {
 	}
 
 	public function check_update( $transient ) {
-		if ( ( '' === $this->current_version || false !== strpos( $this->current_version, '{{' ) ) && ! WP_DEBUG ) {
+		// An unstamped source checkout sorts below every release, so it would
+		// be offered an "update" that replaces the working copy. No WP_DEBUG
+		// escape: test the updater with a stamped build on a separate site.
+		if ( '' === $this->current_version || false !== strpos( $this->current_version, '{{' ) ) {
 			return $transient;
 		}
 

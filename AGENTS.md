@@ -198,9 +198,11 @@ to what a real release produces, without pushing a tag. Steps, per
    `composer.*`, `package*.json`, docs, VCS dirs — see `build.xml`'s
    `<exclude>` list, kept in sync with `.distignore`).
 3. `bin/build.sh` stamps `{{VERSION}}` in the copied `wp-block-forker.php`
-   with `<latest git tag>-<short commit hash>` (e.g. `0.1.0-c80a825`) —
-   distinct from a real release's clean `X.Y.Z`, so a locally built zip is
-   never mistaken for one from GitHub Releases.
+   with `<latest git tag without the v>-dev.<short commit hash>` (e.g.
+   `0.2.0-dev.c80a825`; `0.1.0-dev.…` until the first tag exists) — distinct
+   from a real release's clean `X.Y.Z`, so a locally built zip is never
+   mistaken for one from GitHub Releases, and always sorts below it (see
+   "Update checker and non-release versions").
 4. `bin/package.php` zips `build-dist/wp-block-forker/` into
    `build-dist/wp-block-forker.zip`, honoring `.distignore`.
 
@@ -256,22 +258,21 @@ second run just re-uploads the same asset.
 ### Update checker and non-release versions
 
 `Update_Checker::check_update()` offers an update whenever
-`version_compare( latest_tag, WPBF_VERSION, '>' )`. Two things about that,
-checked with `version_compare()` on this ddev site (WP_DEBUG is `true` here via
-`.ddev/config.yaml`):
+`version_compare( latest_tag, WPBF_VERSION, '>' )`, with one exception: an
+unstamped version (empty, or still containing `{{`) never gets an offer. There
+is deliberately **no `WP_DEBUG` escape** on that guard. An unstamped source
+checkout sorts below every release, so with the escape the dev site would be
+offered an "update" that makes core's plugin upgrader replace the plugin
+directory — here, the git working copy.
 
-- **An unstamped source checkout is treated as older than every release.**
-  The checker skips versions containing `{{`, but only `&& ! WP_DEBUG`, so on
-  a WP_DEBUG site that guard is off and `{{VERSION}}` compares lower than
-  `0.2.0`. Once a release exists, the dev site is offered an "update" on the
-  source checkout. Accepting it would run core's plugin upgrader, which
-  replaces the plugin's directory — here, the git working copy. (That last
-  step is from how core's `Plugin_Upgrader` behaves, not something tested
-  here.) Don't click update on a source checkout.
-- **Locally stamped builds compare inconsistently.** `0.2.0-abc1234` is
-  older than the real `0.2.0` (the letters read as a pre-release suffix), but
-  `0.2.0-1234567` or `0.2.0-1ab2c34` is *newer* — a hash that starts with
-  digits reads as an extra patch segment. So whether a local build is offered
-  the release depends on what its commit hash looks like.
+To test the updater on a development site, use a stamped build on a
+*separate* site: `vendor/bin/phing dist`, install the zip. It's stamped
+`<latest tag, without the v>-dev.<short hash>` (e.g. `0.2.0-dev.abc1234`), and
+the `-dev.` marker is load-bearing: `version_compare()` reads `dev` as a
+pre-release, so such a build sorts below its own release and is always
+offered it. A bare `-<hash>` stamp was inconsistent — a hash starting with a
+letter sorted older (`0.2.0-abc1234`), one starting with a digit sorted
+*newer* (`0.2.0-1ab2c34`), so whether a local build saw the update depended
+on its commit hash.
 
-Neither affects installs from a release zip, which carry a clean `X.Y.Z`.
+Installs from a release zip carry a clean `X.Y.Z` and are unaffected.
