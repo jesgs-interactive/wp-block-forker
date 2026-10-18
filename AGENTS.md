@@ -215,12 +215,63 @@ Phing at all. If they ever drift in what they include/exclude, `.distignore`
 is the CI side's source of truth; `build.xml`'s `<exclude>` list needs
 updating to match by hand.
 
-## Release process
+## Versioning and releases
 
-Same as the rest of the toolchain: `git tag vX.Y.Z && git push --tags`
-triggers `.github/workflows/release.yml`, which runs `npm ci && npm run
-build`, stamps `{{VERSION}}`, and attaches `wp-block-forker.zip` to the
-GitHub release. The embedded `Update_Checker` in
-`includes/class-wpbf-update-checker.php` points at
-`jesgs-interactive/wp-block-forker` — update that constant if the repo ever
-moves.
+**Scheme: semver, tags `vX.Y.Z`, `0.x` until the author calls it stable.**
+While `0.x`: a minor bump is a new feature or a breaking change, a patch bump
+is a fix only. There are no criteria set yet for 1.0.0; the REST contract is
+namespaced `wpbf/v1`, so a breaking change to it after 1.0 should be a new
+namespace rather than a silent edit. The first release is intended to be
+`v0.2.0` (merge is a new capability; the fork backslash fix rides along).
+Pre-releases use a pre-release tag (`v0.3.0-rc.1`) **and** GitHub's
+"pre-release" checkbox: the updater reads `/releases/latest`, which GitHub
+defines as the newest non-draft, non-pre-release, so ticking it keeps an RC
+away from every installed copy.
+
+**The git tag is the only source of truth.** Nothing in the repo holds the
+version number:
+- `wp-block-forker.php` carries `{{VERSION}}` placeholders (header and
+  `WPBF_VERSION`), stamped at build time — from the pushed tag in CI, from
+  `<latest tag>-<short hash>` in a local `phing dist`.
+- `package.json`'s `"version": "0.1.0"` is a placeholder npm requires nothing
+  of; it is not read by the build, the plugin, or CI, and is deliberately not
+  kept in sync. Don't bump it.
+- There is no `CHANGELOG.md`. The changelog is the GitHub Release body
+  (`Update_Checker::plugins_api()` shows it in the "View details" modal), so
+  there is one place to write it and nothing to drift. Use "Generate release
+  notes" and edit.
+
+**Cutting a release:** `main` clean and pushed, then
+`git tag vX.Y.Z && git push --tags`. `.github/workflows/release.yml` runs
+`npm ci && npm run build`, stamps `{{VERSION}}` from the tag with the `v`
+stripped, and attaches `wp-block-forker.zip` to the GitHub release. The
+embedded `Update_Checker` in `includes/class-wpbf-update-checker.php` points
+at `jesgs-interactive/wp-block-forker` — update that constant if the repo ever
+moves. Check the workflow run and the attached asset's name
+(`wp-block-forker.zip` — the updater matches on it) before telling anyone to
+update. The workflow also triggers on `release: published`, so creating a
+release through the GitHub UI (which creates the tag) can fire it twice; the
+second run just re-uploads the same asset.
+
+### Update checker and non-release versions
+
+`Update_Checker::check_update()` offers an update whenever
+`version_compare( latest_tag, WPBF_VERSION, '>' )`. Two things about that,
+checked with `version_compare()` on this ddev site (WP_DEBUG is `true` here via
+`.ddev/config.yaml`):
+
+- **An unstamped source checkout is treated as older than every release.**
+  The checker skips versions containing `{{`, but only `&& ! WP_DEBUG`, so on
+  a WP_DEBUG site that guard is off and `{{VERSION}}` compares lower than
+  `0.2.0`. Once a release exists, the dev site is offered an "update" on the
+  source checkout. Accepting it would run core's plugin upgrader, which
+  replaces the plugin's directory — here, the git working copy. (That last
+  step is from how core's `Plugin_Upgrader` behaves, not something tested
+  here.) Don't click update on a source checkout.
+- **Locally stamped builds compare inconsistently.** `0.2.0-abc1234` is
+  older than the real `0.2.0` (the letters read as a pre-release suffix), but
+  `0.2.0-1234567` or `0.2.0-1ab2c34` is *newer* — a hash that starts with
+  digits reads as an extra patch segment. So whether a local build is offered
+  the release depends on what its commit hash looks like.
+
+Neither affects installs from a release zip, which carry a clean `X.Y.Z`.
