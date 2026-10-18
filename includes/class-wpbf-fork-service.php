@@ -76,13 +76,18 @@ class Fork_Service {
 			$title = __( 'Untitled fragment', 'wp-block-forker' );
 		}
 
+		// wp_insert_post() expects slashed data and unslashes it itself; REST
+		// params arrive already unslashed, so skipping wp_slash() would eat
+		// the backslashes inside block comment JSON.
 		$new_post_id = wp_insert_post(
-			array(
-				'post_type'    => $post_type,
-				'post_status'  => 'draft',
-				'post_title'   => $title,
-				'post_content' => $content,
-				'post_author'  => get_current_user_id(),
+			wp_slash(
+				array(
+					'post_type'    => $post_type,
+					'post_status'  => 'draft',
+					'post_title'   => $title,
+					'post_content' => $content,
+					'post_author'  => get_current_user_id(),
+				)
 			),
 			true
 		);
