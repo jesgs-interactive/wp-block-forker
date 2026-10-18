@@ -15,13 +15,19 @@ and a mode:
   untouched.
 - **Move** — same, but also removes the selected blocks from the source post.
 
+A second menu item, "Merge into existing post…", writes the selected blocks
+into an existing post instead of creating one: the user searches for a target
+(any forkable post type, drafts and published alike, the source post excluded),
+picks **append** (default) or **prepend**, and copy or move as above. See
+"Merging into an existing post".
+
 ## Architecture
 
 ```
 wp-block-forker.php              bootstrap: header, constants, manual requires
 includes/
-  class-wpbf-fork-service.php    create_fork()
-  class-wpbf-rest-controller.php POST wpbf/v1/fork — used by the editor
+  class-wpbf-fork-service.php    create_fork(), merge_into()
+  class-wpbf-rest-controller.php POST wpbf/v1/fork, POST wpbf/v1/merge — used by the editor
   class-wpbf-plugin.php          hook wiring, asset enqueue, forkable-post-types list
   class-wpbf-update-checker.php  embedded GitHub Releases updater (per house convention)
 src/
@@ -45,10 +51,11 @@ CI/dev-facing build tool, not something loaded at runtime. That's a
 different category from pulling in Composer autoloading for the plugin's
 own classes, which is the thing being avoided above.
 
-## Why "move" is handled client-side, not by the REST endpoint
+## Why "move" is handled client-side, not by the REST endpoints
 
-`Fork_Service::create_fork()` only ever *creates*. It never touches the
-source post — "move" is handled entirely client-side instead:
+`Fork_Service::create_fork()` and `merge_into()` only ever write to the
+*destination*. Neither touches the source post — "move" is handled entirely
+client-side instead:
 `fork-modal.js` calls `dispatch('core/block-editor').removeBlocks(clientIds)`
 after a successful fork. This does **not** immediately persist — it just
 updates the editor's local state, and the removal is saved the normal way,
@@ -78,11 +85,50 @@ treats creation actions as idempotent.
 Provenance postmeta on every forked post: `_wpbf_source_post_id`,
 `_wpbf_fork_mode`, `_wpbf_fork_token`.
 
+## Merging into an existing post
+
+`Fork_Service::merge_into()` (`POST wpbf/v1/merge`) concatenates the
+selected blocks' serialized markup onto the target's `post_content` —
+`existing + "\n\n" + new` for append, reversed for prepend. No block parsing;
+it's plain string concatenation, which is why only start/end positions exist
+(see "Not included").
+
+- **Idempotency** is per *target*, not per fork: a target can receive many
+  merges, so `_wpbf_merge_token` is a non-unique postmeta, one row per merge.
+  A replayed `merge_token` returns success without writing again. The replay
+  check runs before the lock check, so a retry of a request that already
+  succeeded isn't turned into a 409 by someone opening the post in between.
+  Two *concurrent* identical requests can still both write — same accepted
+  limitation as fork. If `add_post_meta()` fails after the content write, it's
+  logged and success is still returned: reporting failure would invite a retry
+  and a duplicate append.
+- **Slashing:** `wp_update_post()` expects slashed input and unslashes it;
+  REST params arrive unslashed. The content goes through `wp_slash()` first,
+  otherwise backslashes inside block comment JSON (`\u003c`, `\"`) are eaten
+  and the block's attributes no longer parse.
+- **Why overwriting the target server-side is fine here** when overwriting the
+  *source* was rejected (above): the source is the post open in the editor
+  making the request, so a server-side write races that editor's own next
+  save. The target is never the post making the request — `source == target`
+  is rejected with 400 — and `wp_check_post_lock()` returns 409 if *another*
+  user has it open in an editor. The same user with the target open in a
+  second tab is **not** protected (core treats your own lock as no lock); that
+  tab's next save will overwrite the merge. `wp_update_post()` writes a
+  revision, so the pre-merge content is recoverable.
+- Rejected targets: trashed or auto-draft posts (404), post types that aren't
+  public + `show_in_rest` (400).
+- `mode` is not sent to or stored by the merge endpoint (unlike fork, where it
+  is provenance on the new post) — the target is an existing post that can
+  have many merges, and the revision is the audit trail.
+
 ## Capability model
 
 `current_user_can( 'edit_post', $source_post_id )` (object-specific, so an
 author can't fork out of someone else's post) AND
-`current_user_can( $target_post_type->cap->create_posts )`. Nonce is
+`current_user_can( $target_post_type->cap->create_posts )`.
+
+Merge: `edit_post` on the source AND `edit_post` on the target, both
+object-specific. No `create_posts` check — nothing is created. Nonce is
 handled automatically by `@wordpress/api-fetch`'s default middleware — no
 manual nonce plumbing needed since the editor already wires this up.
 
@@ -126,6 +172,17 @@ installs on. First thing to check if the menu item doesn't appear, or
   and maintenance cost for a headless use case nobody had asked for. If a
   real automation need for headless forking shows up later, re-add it as its
   own scoped feature rather than resurrecting this version wholesale.
+
+- No insertion-point picker for merge (e.g. "after this heading") — it would
+  need `parse_blocks()` on the target, an outline UI in the modal, and a plan
+  for the target changing between pick and submit. Append/prepend covers the
+  motivating case (a fragment too thin to stand alone folded into a bigger
+  post) at a fraction of the surface area; re-add as its own feature if
+  someone actually needs it.
+- No extra confirmation when merging into a *published* post. Gate is
+  `edit_post` on the target, the modal shows the target's status, and the
+  revision makes it recoverable — a confirm step would add friction to the
+  main use case (folding into an existing live article).
 
 ## Building a local distribution zip
 

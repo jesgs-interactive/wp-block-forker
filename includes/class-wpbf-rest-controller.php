@@ -1,7 +1,8 @@
 <?php
 /**
- * REST route the editor UI calls. Creation only — see Fork_Service and
- * AGENTS.md for why "move" removal of source blocks is not done here.
+ * REST routes the editor UI calls. They only write to the fork/merge
+ * destination — see Fork_Service and AGENTS.md for why "move" removal of
+ * source blocks is not done here.
  */
 
 namespace WPBF;
@@ -25,18 +26,7 @@ class Rest_Controller {
 				'callback'            => array( $this, 'handle_fork' ),
 				'permission_callback' => array( $this, 'check_permission' ),
 				'args'                => array(
-					'source_post_id'    => array(
-						'required'          => true,
-						'type'              => 'integer',
-						// Bare 'is_numeric' breaks here: has_valid_params() calls
-						// validate_callback with 3 args ($value, $request, $param),
-						// and PHP 8's strict arity check throws ArgumentCountError
-						// on internal functions given more args than they declare.
-						'validate_callback' => static function ( $value ) {
-							return is_numeric( $value );
-						},
-						'sanitize_callback' => 'absint',
-					),
+					'source_post_id'    => $this->post_id_arg(),
 					'post_type'         => array(
 						'required'          => true,
 						'type'              => 'string',
@@ -63,6 +53,49 @@ class Rest_Controller {
 					),
 				),
 			)
+		);
+
+		register_rest_route(
+			'wpbf/v1',
+			'/merge',
+			array(
+				'methods'             => \WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'handle_merge' ),
+				'permission_callback' => array( $this, 'check_merge_permission' ),
+				'args'                => array(
+					'source_post_id'    => $this->post_id_arg(),
+					'target_post_id'    => $this->post_id_arg(),
+					'extracted_content' => array(
+						'required' => true,
+						'type'     => 'string',
+					),
+					'position'          => array(
+						'required' => true,
+						'type'     => 'string',
+						'enum'     => array( 'append', 'prepend' ),
+					),
+					'merge_token'       => array(
+						'required'          => true,
+						'type'              => 'string',
+						'sanitize_callback' => 'sanitize_key',
+					),
+				),
+			)
+		);
+	}
+
+	protected function post_id_arg(): array {
+		return array(
+			'required'          => true,
+			'type'              => 'integer',
+			// Bare 'is_numeric' breaks here: has_valid_params() calls
+			// validate_callback with 3 args ($value, $request, $param),
+			// and PHP 8's strict arity check throws ArgumentCountError
+			// on internal functions given more args than they declare.
+			'validate_callback' => static function ( $value ) {
+				return is_numeric( $value );
+			},
+			'sanitize_callback' => 'absint',
 		);
 	}
 
@@ -95,6 +128,54 @@ class Rest_Controller {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Object-specific edit_post on both ends. No create_posts check: a merge
+	 * only writes to a post that already exists.
+	 */
+	public function check_merge_permission( \WP_REST_Request $request ) {
+		if ( ! current_user_can( 'edit_post', absint( $request->get_param( 'source_post_id' ) ) ) ) {
+			return new \WP_Error(
+				'wpbf_forbidden_source',
+				__( 'You cannot edit the source post.', 'wp-block-forker' ),
+				array( 'status' => 403 )
+			);
+		}
+
+		if ( ! current_user_can( 'edit_post', absint( $request->get_param( 'target_post_id' ) ) ) ) {
+			return new \WP_Error(
+				'wpbf_forbidden_target',
+				__( 'You cannot edit the target post.', 'wp-block-forker' ),
+				array( 'status' => 403 )
+			);
+		}
+
+		return true;
+	}
+
+	public function handle_merge( \WP_REST_Request $request ) {
+		$result = $this->fork_service->merge_into(
+			array(
+				'source_post_id'    => $request->get_param( 'source_post_id' ),
+				'target_post_id'    => $request->get_param( 'target_post_id' ),
+				'extracted_content' => $request->get_param( 'extracted_content' ),
+				'position'          => $request->get_param( 'position' ),
+				'merge_token'       => $request->get_param( 'merge_token' ),
+			)
+		);
+
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		return new \WP_REST_Response(
+			array(
+				'id'       => $result,
+				'edit_url' => get_edit_post_link( $result, 'raw' ),
+			),
+			200
+		);
 	}
 
 	public function handle_fork( \WP_REST_Request $request ) {

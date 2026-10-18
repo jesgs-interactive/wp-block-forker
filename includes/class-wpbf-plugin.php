@@ -72,8 +72,9 @@ class Plugin {
 			}
 
 			$out[] = array(
-				'slug'  => $type->name,
-				'label' => $type->labels->singular_name,
+				'slug'      => $type->name,
+				'label'     => $type->labels->singular_name,
+				'rest_base' => $type->rest_base ?: $type->name,
 			);
 		}
 
